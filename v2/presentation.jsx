@@ -285,16 +285,16 @@ const CHAPTERS = {
     newLine: "כל ההחלטות לפי ישיבה — ולכל אחת, המשימות שלה וההתקדמות.",
   },
   tasks: {
-    name: "משימות", title: "משימות\nשרואים.",
+    name: "משימות", title: "אף משימה\nלא הולכת לאיבוד.",
     old: "captures/old/tasks.png", now: "captures/new/tasks/board-wide.png",
     oldLine: "רשימת משימות בטבלה.",
     newLine: "לוח משימות: לביצוע, בתהליך, הושלם — ומה באיחור.",
   },
   drive: {                                       // the old documents screen looked too much like 2.0: one 2.0 screen
-    name: "BD Drive", title: "כל המסמכים.\nבמקום אחד.",
+    name: "BD Drive", title: "ניהול כל מסמכי הארגון\nבמקום אחד.",
     old: "captures/new/drive/01-root.png", now: "captures/new/drive/01-root.png",      // the drive capture's first frame
-    oldLine: "כל המסמכים והתיקיות של הדירקטוריון — במקום אחד.",
-    newLine: "כל המסמכים והתיקיות של הדירקטוריון — במקום אחד.",
+    oldLine: "תיקייה לכל ועדה ותיקייה אישית — ולכל קובץ: מי פתח, מי שינה ולמי יש גישה.",
+    newLine: "תיקייה לכל ועדה ותיקייה אישית — ולכל קובץ: מי פתח, מי שינה ולמי יש גישה.",
   },
   next: {                                        // titles on their own (steps: 1)
     name: "מה הלאה", title: "הצצה\nלגרסאות הבאות.",
