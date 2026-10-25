@@ -5,10 +5,10 @@ import { ParticleMorph } from "../dissolve.jsx";
 import { useDemo, DemoFrame } from "./demo.jsx";
 import { agendaDemo } from "./demo-agenda.jsx";
 import { Migration, NextSteps, Close, BreakCard } from "./Closing.jsx";
-import { ShotDemo, createMeeting, meetingFromWorkplan, decisionsDemo, tasksDemo, driveDemo, bookDemo, minutesDemo, workplanDemo, votesDemo, compDemo, remindDemo } from "./ShotDemo.jsx";
+import { ShotDemo, createMeeting, meetingFromWorkplan, decisionsDemo, tasksDemo, driveDemo, bookDemo, minutesDemo, workplanDemo, votesDemo, compDemo, remindDemo, dashDemo, meetingPage, minutesSendDemo, searchDemo } from "./ShotDemo.jsx";
 import { Film, FILM_BG, filmTime, filmControl } from "./Film.jsx";
 import { CUE, stopScore, muteScore } from "./score.js";
-import { LayoutDashboard, CalendarDays, NotebookPen, Gavel, ListChecks, CalendarRange, FolderOpen, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, CalendarDays, NotebookPen, Gavel, ListChecks, CalendarRange, FolderOpen, Search, ShieldCheck } from "lucide-react";
 
 const W = 1920, H = 1080;
 const A = (p) => `${import.meta.env.BASE_URL}${p.replace(/^\//, "")}`;
@@ -34,6 +34,7 @@ const FEATURES = [
   { k: "tasks", name: "משימות", Icon: ListChecks },
   { k: "workplan", name: "תוכנית עבודה", Icon: CalendarRange },
   { k: "drive", name: "BD Drive", Icon: FolderOpen, en: true },
+  { k: "search", name: "חיפוש", Icon: Search },
   { k: "roles", name: "הרשאות", Icon: ShieldCheck },
 ];
 
@@ -44,18 +45,26 @@ const SLIDES = [
     note: "What's new. The nine features arrive one by one — name them as they land. PRESS: the rail moves up to the top and we start with דף הבית." },
   { id: "look", steps: 6, rail: "home",
     note: "דף הבית — the dashboard, component by component: metrics, tasks, meetings, committees, recent documents. Each PRESS flies the camera to the next one." },
-  { id: "ch-meetings", steps: 3, rail: "agenda", chapter: "meetings",
-    note: "Meetings & agenda. The chapter title. PRESS: the old meeting page — everything on one long page. PRESS: it dissolves into the 2.0 meetings page." },
+  { id: "demo-dashboard", rail: "home", shots: "dash",
+    note: "And it's yours: ערוך פריסה → drag the committees row up under the numbers → remove the numbers row to the widget library (it isn't deleted) → סיום: committees on top, tasks and meetings below. Real product, nothing saved." },
+  { id: "ch-meetings", steps: 1, rail: "agenda", chapter: "meetings",
+    note: "Meetings and the agenda, part 1: creating a meeting." },
   { id: "demo-create", rail: "agenda", shots: "create",
-    note: "Creating a meeting — the real screens: details, attendees, publish + invitations. Then back to the list, a draft meeting's ⋮ menu (mention שכפול in a sentence), its page, the participants tab and the agenda tab — a draft, because a published meeting's agenda can't change. The agenda is empty: הוסף סדר יום → the dialog (point at the two new AI options) → צור ידנית → the topics list from the work plan (overdue, due soon, suggested) → four clicks and the agenda is built, with times. Click the screen to step through by hand." },
+    note: "The meetings list → a new meeting in three steps: details, attendees, publish + invitation → back to the list → the draft meeting's ⋮ menu (mention שכפול in a sentence) → הצג ישיבה." },
+  { id: "ch-meeting-page", steps: 3, rail: "agenda", chapter: "meetingPage",
+    note: "Part 2: the meeting page. PRESS: the old meeting page — one long page. PRESS: it dissolves into the 2.0 meeting page, with tabs." },
+  { id: "demo-meeting", rail: "agenda", shots: "meeting",
+    note: "Inside the draft meeting (the page from the comparison): משתתפים → סדר יום, empty → הוסף סדר יום → the dialog (point at the AI options) → צור ידנית → the work-plan panel: two topics by click, two by drag, then reorder — the times recalculate. A draft, because a published meeting's agenda can't change." },
   { id: "ch-book", steps: 1, rail: "agenda", chapter: "book",
     note: "The meeting book — and, new, asking it questions." },
   { id: "demo-book", rail: "agenda", shots: "book",
     note: "The real book page → NEW: שאל את ספר הישיבה → a question in plain Hebrew → the answer streams in, every claim with its page → click עמ׳ 4 and the passage is highlighted. The report is demo content; the AI panel is the roadmap's design on the real page." },
   { id: "ch-minutes", steps: 3, rail: "minutes", chapter: "minutes",
-    note: "Minutes. PRESS: the old way — a section at the bottom of the meeting page. PRESS: 2.0 — a document." },
+    note: "Minutes. PRESS: the old way — the protocol editor, a text box per topic, all typed by hand. PRESS: 2.0." },
   { id: "demo-minutes", rail: "minutes", shots: "minutes",
-    note: "The empty minutes tab → צור פרוטוקול → NEW: צור עם AI → step 1 upload the minutes file (detected as final minutes, original wording kept) → step 2 the AI extracts topics, decisions and tasks — nothing saved yet → step 3 approve each discussion, decision and task — all editable → step 4 builds the minutes → the minutes as a document. The AI flow is the roadmap's design on the real page; the content matches the book." },
+    note: "The empty minutes tab → צור פרוטוקול → first the familiar way: העלה קובץ → the uploaded file in the viewer → ערוך → the full editor (Word-like), with tracked changes and a change balloon (who / what / when, accept or reject). Then NEW: צור עם AI → upload the minutes file (detected as final minutes, original wording kept) → approve each discussion, decision and task → builds the minutes → regular minutes, topic by topic (unapproved topics marked as AI drafts) → topic 1 open: discussion, decisions, the task with owner and due date. Real screens; the AI dialogs are the roadmap's design on the real page." },
+  { id: "demo-minutes-send", rail: "minutes", shots: "minutesSend",
+    note: "Short: the minutes go out. Status → שלח להערות (due date, everyone or by topic) → comments tracking (who reviewed) → סמן כממתין לאישור → שלח לאישור → approvals tracking (who approved, who's pending). Real dialogs; sends were blocked, tracking statuses are demo data." },
   { id: "ch-decisions", steps: 3, rail: "decisions", chapter: "decisions",
     note: "Decision tracking. PRESS: the old table. PRESS: it dissolves into 2.0." },
   { id: "demo-decisions", rail: "decisions", shots: "decisions",
@@ -68,10 +77,14 @@ const SLIDES = [
     note: "The work plan. PRESS: the screen." },
   { id: "demo-workplan", rail: "workplan", shots: "workplan",
     note: "The 2026 work plan by committee → a committee opens, its topics with status and due date → the next one → הצג פירוט: discussions across the year, by month → by quarter → filter to one committee: the counters and the chart follow. Demo data." },
-  { id: "ch-drive", steps: 3, rail: "drive", chapter: "drive",
-    note: "BD Drive. PRESS: the old documents. PRESS: the 2.0 drive." },
+  { id: "ch-drive", steps: 2, rail: "drive", chapter: "drive",
+    note: "BD Drive. PRESS: the screen." },
   { id: "demo-drive", rail: "drive", shots: "drive",
     note: "The drive → a committee folder → select a file → its details (who opened, changed, created, access). Demo data — BD Drive isn't live on product yet, don't open it live." },
+  { id: "ch-search", steps: 1, rail: "search", chapter: "search",
+    note: "Global search — one box for the whole system, from anywhere." },
+  { id: "demo-search", rail: "search", shots: "search",
+    note: "The sidebar's חיפוש, over the meeting's minutes → the empty search (categories, quick actions) → 'גידור' → results grouped by type: the tasks (with owners and links), the files with the sentence where the word appears → other matches inside the same file → scroll: the meeting and the topics. Real search UI; the results are demo data from our own story." },
   { id: "ch-roles", steps: 2, rail: "roles", chapter: "roles",
     note: "Permissions — a few words only. PRESS: the screen. Say: access comes in three layers — system permissions, the role in a committee and the role in a meeting — and the broadest one wins. A committee role applies to all its meetings, and you can invite someone to one topic only, with access to just that topic and its materials. The system admin defines the system roles and exactly what each can do." },
   { id: "ch-next", steps: 1, chapter: "next",
@@ -90,8 +103,6 @@ const SLIDES = [
     note: "The notifications → smart reminders: what might be missed, with a suggested action → the AI drafts a reminder → sent only on approval. The 'book not opened' item is a concept." },
   { id: "migration", steps: 2, closing: "Migration",
     note: "Everything comes with you. PRESS: the four things — data and history, documents, users and permissions, committee structure — arrive one by one, each ticked." },
-  { id: "next-steps", closing: "NextSteps",
-    note: "Quiet and plain. No dates." },
   { id: "close", closing: "Close",
     note: "The mark from the film, and תודה. Hold while the applause lands, then press once for the break card." },
   { id: "break", closing: "BreakCard",
@@ -233,10 +244,16 @@ function Look({ step }) {
 /* ── chapter: the title, the old way, it dissolves into 2.0 ──── */
 const CHAPTERS = {
   meetings: {
-    name: "ישיבות וסדר יום", title: "ישיבה חדשה,\nבשלושה צעדים.",
+    name: "ישיבות וסדר יום", title: "הישיבה הבאה\nכבר מוכנה.",
     old: "captures/old/meeting.png", now: "captures/new/meetings/meetings-list.png",
     oldLine: "כל ישיבה — עמוד אחד ארוך של קישורים, סדר יום ופרוטוקול.",
     newLine: "כל הישיבות במסך אחד — ולכל ישיבה עמוד משלה.",
+  },
+  meetingPage: {
+    name: "ישיבות וסדר יום", title: "לכל ישיבה\nעמוד משלה.",
+    old: "captures/old/meeting.png", now: "captures/new/meetings/draft-overview.png",
+    oldLine: "כל ישיבה — עמוד אחד ארוך של קישורים, סדר יום ופרוטוקול.",
+    newLine: "לכל ישיבה עמוד משלה — והכול בלשוניות.",
   },
   agenda: {
     name: "ישיבות וסדר יום", title: "סדר היום\nבונה את עצמו.",
@@ -245,15 +262,15 @@ const CHAPTERS = {
     newLine: "הנושאים כבר מחכים בתוכנית העבודה.",
   },
   book: {
-    name: "ספר הישיבה", title: "ספר הישיבה.\nעכשיו הוא עונה.",
+    name: "ספר הישיבה", title: "עכשיו כל המסמכים\nחכמים יותר.",
     old: "captures/new/book/01-plain.png", now: "captures/new/book/01-plain.png",   // a title on its own (steps: 1)
     oldLine: "", newLine: "",
   },
   minutes: {
-    name: "פרוטוקול", title: "פרוטוקול,\nבלי להקליד.",
-    old: "captures/old/meeting-protocol.png", now: "captures/new/minutes/07-document-clean.png",
-    oldLine: "הפרוטוקול — עוד פסקה בתחתית עמוד הישיבה.",
-    newLine: "מהקובץ לפרוטוקול: נושאים, החלטות ומשימות — במסמך אחד.",
+    name: "פרוטוקול", title: "פרוטוקול.\nמסודר מההתחלה עד הסוף.",
+    old: "captures/old/protocol-editor.png", now: "captures/new/minutes/m10-clean.png",
+    oldLine: "הפרוטוקול — תיבת טקסט לכל נושא, וכל מילה מוקלדת ידנית.",
+    newLine: "כל נושא במקומו — הדיון, ההחלטות והמשימות.",
   },
   workplan: {                                    // no clean capture of the old system's work plan: one 2.0 screen
     name: "תוכנית עבודה", title: "השנה כולה,\nבמבט אחד.",
@@ -273,14 +290,14 @@ const CHAPTERS = {
     oldLine: "רשימת משימות בטבלה.",
     newLine: "לוח משימות: לביצוע, בתהליך, הושלם — ומה באיחור.",
   },
-  drive: {
+  drive: {                                       // the old documents screen looked too much like 2.0: one 2.0 screen
     name: "BD Drive", title: "כל המסמכים.\nבמקום אחד.",
-    old: "captures/old/documents.png", now: "captures/new/drive/01-root.png",      // the drive capture's first frame
-    oldLine: "ניהול מסמכים בתיקיות.",
+    old: "captures/new/drive/01-root.png", now: "captures/new/drive/01-root.png",      // the drive capture's first frame
+    oldLine: "כל המסמכים והתיקיות של הדירקטוריון — במקום אחד.",
     newLine: "כל המסמכים והתיקיות של הדירקטוריון — במקום אחד.",
   },
   next: {                                        // titles on their own (steps: 1)
-    name: "מה הלאה", title: "טעימה\nממה שבדרך.",
+    name: "מה הלאה", title: "הצצה\nלגרסאות הבאות.",
     old: "captures/new/next/v01-votes.png", now: "captures/new/next/v01-votes.png", oldLine: "", newLine: "",
   },
   votes: {
@@ -294,6 +311,11 @@ const CHAPTERS = {
   remind: {
     name: "בקרוב · AI", title: "ה-AI שם לב,\nלפני שמשהו מתפספס.",
     old: "captures/new/next/10-ntf-smart.png", now: "captures/new/next/10-ntf-smart.png", oldLine: "", newLine: "",
+  },
+  search: {                                      // a title on its own (steps: 1), then the demo
+    name: "חיפוש", title: "חיפוש אחד.\nבכל המערכת.",
+    old: "captures/new/search/03-results.png", now: "captures/new/search/03-results.png",
+    oldLine: "", newLine: "",
   },
   roles: {                                       // one slide, a few words: the title, then the screen (steps: 2)
     name: "הרשאות", title: "כל אחד רואה\nבדיוק מה שצריך.",
@@ -387,7 +409,7 @@ function Chapter({ s, step }) {
 }
 
 /* ── demos ───────────────────────────────────────────────────── */
-const SHOTS = { create: createMeeting, workplan: meetingFromWorkplan, decisions: decisionsDemo, tasks: tasksDemo, drive: driveDemo, book: bookDemo, minutes: minutesDemo, workplan: workplanDemo, votes: votesDemo, comp: compDemo, remind: remindDemo };
+const SHOTS = { create: createMeeting, workplan: meetingFromWorkplan, decisions: decisionsDemo, tasks: tasksDemo, drive: driveDemo, book: bookDemo, minutes: minutesDemo, workplan: workplanDemo, votes: votesDemo, comp: compDemo, remind: remindDemo, dash: dashDemo, meeting: meetingPage, minutesSend: minutesSendDemo, search: searchDemo };
 
 const ShotSlide = ({ s }) => (
   <div style={{

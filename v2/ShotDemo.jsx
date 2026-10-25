@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { T } from "../tokens.js";
+import { Play, Pause } from "lucide-react";
 
 const A = (p) => `${import.meta.env.BASE_URL}${p.replace(/^\//, "")}`;
 const NAT = [3200, 2000];
@@ -21,13 +22,22 @@ const NAT = [3200, 2000];
               screen: dir 'down' (default — generated text streaming in, rows opening),
               'up' (bars rising), 'rtl' / 'ltr' (filling sideways), 'radial' (rings, progress);
               cover: a colour to wipe away instead of the previous screen (when the layouts differ).
+     reveal also takes delay (ms before the wipe, default 200) and fade (the cover fades in first, so whatever
+              was there — old bars, a closing menu — fades to it before the new content arrives).
+     push:     { y, h, x, w, dur, delay, dir } — a row opened (dir 'down', default): everything below y slides down
+              by h, uncovering what opened; or closed (dir 'up'): the rows below slide back up over it.
+     scroll:   { rect, d, dur, delay } — the content inside rect scrolls up by d: the previous screen slides out
+              the top while this one rises into place (both show the same content where they overlap).
+     progress: { rect, dur, color, track } — a progress bar drawn over the screenshot's own, filling right to left.
+     spin:     [x, y, w, h] — that piece of the screen turns (a loading spinner).
    ══════════════════════════════════════════════════════════════════ */
 export function ShotDemo({ spec, w = 1360 }) {
   const [i, setI] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [typed, setTyped] = useState(0);
   const [ripple, setRipple] = useState(0);
-  const [go, setGo] = useState(false);            // flips one paint after a frame mounts, to start its motion
+  const [goAt, setGoAt] = useState(-1);           // the frame whose motion has started: set one paint after it mounts
+  const go = goAt === i;                          // false on a frame's first render, so its motion always starts from the beginning
   const timers = useRef([]);
   const k = w / NAT[0];
   const f = spec.frames[i];
@@ -37,8 +47,7 @@ export function ShotDemo({ spec, w = 1360 }) {
   const later = (fn, ms) => timers.current.push(setTimeout(fn, ms));
 
   useEffect(() => {
-    setGo(false);
-    let r2; const r1 = requestAnimationFrame(() => { r2 = requestAnimationFrame(() => setGo(true)); });
+    let r2; const r1 = requestAnimationFrame(() => { r2 = requestAnimationFrame(() => setGoAt(i)); });
     return () => { cancelAnimationFrame(r1); cancelAnimationFrame(r2); };
   }, [i]);
 
@@ -58,6 +67,7 @@ export function ShotDemo({ spec, w = 1360 }) {
 
   const restart = () => { setI(0); setPlaying(true); };
   const back = () => { setPlaying(false); setI((v) => Math.max(0, v - 1)); };
+  const toggle = () => (last && !playing ? restart() : setPlaying((p) => !p));   // at the end, play starts over
   const forward = () => { setPlaying(false); setI((v) => Math.min(spec.frames.length - 1, v + 1)); };
   const cur = f.cursor;
   const prev = spec.frames[i - 1];
@@ -69,7 +79,7 @@ export function ShotDemo({ spec, w = 1360 }) {
   });
   /* how the previous screen is wiped away, per direction */
   const wipe = (r, on) => {
-    const t = `${r.dur || 1500}ms cubic-bezier(.4,0,.6,1) 200ms`;
+    const t = `${r.dur || 1500}ms cubic-bezier(.4,0,.6,1) ${r.delay ?? 200}ms`;
     if (r.dir === "radial") return {
       "--bdxa": on ? "360deg" : "0deg", transition: `--bdxa ${t}`,
       WebkitMaskImage: "conic-gradient(transparent var(--bdxa), #000 0)", maskImage: "conic-gradient(transparent var(--bdxa), #000 0)",
@@ -118,11 +128,51 @@ export function ShotDemo({ spec, w = 1360 }) {
               animation: "shotShimmer 1.25s ease-in-out infinite" }} />
           </div>
         )}
+        {/* progress: an upload bar filling from empty to full */}
+        {f.progress && (      /* on a white band a little larger than the bar, so none of the screenshot's own bar shows at the edges */
+          <div style={{ position: "absolute", left: (f.progress.rect[0] - 4) * k, top: (f.progress.rect[1] - 4) * k, width: (f.progress.rect[2] + 8) * k,
+            height: (f.progress.rect[3] + 8) * k, padding: 4 * k, background: "#fff", zIndex: 2, pointerEvents: "none", boxSizing: "border-box" }}>
+            <div style={{ position: "relative", width: "100%", height: "100%", borderRadius: 99, overflow: "hidden", background: f.progress.track }}>
+              <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, borderRadius: 99, background: f.progress.color,
+                width: go ? "100%" : "0%", transition: `width ${f.progress.dur || 1600}ms cubic-bezier(.45,0,.3,1) 250ms` }} />
+            </div>
+          </div>
+        )}
+        {f.spin && <div style={piece(f.src, f.spin, { zIndex: 2, animation: "shotSpin 1s linear infinite" })} />}
         {/* reveal: the previous screen is wiped away top to bottom, uncovering the generated content */}
         {prev && [].concat(f.reveal || []).map((r, n) => (
           <div key={`rev${i}-${n}`} style={piece(prev.src, r.rect, {
-            zIndex: 2, ...(r.cover ? { backgroundImage: "none", background: r.cover } : {}), ...wipe(r, go) })} />
+            zIndex: 2, ...(r.cover ? { backgroundImage: "none", background: r.cover } : {}), ...wipe(r, go),
+            ...(r.fade ? { animation: "shotFadeIn 380ms ease both" } : {}) })} />
         ))}
+        {/* scroll: a list scrolled within its box — the old view leaves upward as the new one arrives from below */}
+        {prev && f.scroll && (() => {
+          const [sx, sy, sw, sh] = f.scroll.rect, d = f.scroll.d * k;
+          const t = `transform ${f.scroll.dur || 900}ms cubic-bezier(.33,0,.15,1) ${f.scroll.delay ?? 380}ms`;
+          const at = (src, style) => ({ ...piece(src, [sx, sy, sw, sh], style), left: 0, top: 0 });
+          return (
+            <div key={`scroll${i}`} style={{ position: "absolute", left: sx * k, top: sy * k, width: sw * k, height: sh * k,
+              overflow: "hidden", zIndex: 2, pointerEvents: "none" }}>
+              <div style={at(prev.src, { transform: `translateY(${go ? -d : 0}px)`, transition: t })} />
+              <div style={at(f.src, { transform: `translateY(${go ? 0 : d}px)`, transition: t })} />
+            </div>
+          );
+        })()}
+        {/* push: the content under a row slides down to make room for what opened (or back up to close it) */}
+        {prev && f.push && (() => {
+          const p = f.push, x = p.x ?? 44, w = p.w ?? 2652, hgt = NAT[1] - p.y;
+          const t = `transform ${p.dur || 950}ms cubic-bezier(.33,0,.15,1) ${p.delay ?? 380}ms`;   // after the screens' cross-fade
+          const at = (src, style) => ({ ...piece(src, [x, p.y, w, hgt], style), left: 0, top: 0 });
+          return (
+            <div key={`push${i}`} style={{ position: "absolute", left: x * k, top: p.y * k, width: w * k, height: hgt * k,
+              overflow: "hidden", zIndex: 2, pointerEvents: "none" }}>
+              {p.dir === "up" ? <>
+                <div style={at(prev.src)} />
+                <div style={at(f.src, { transform: `translateY(${go ? 0 : p.h * k}px)`, transition: t })} />
+              </> : <div style={at(prev.src, { transform: `translateY(${go ? p.h * k : 0}px)`, transition: t })} />}
+            </div>
+          );
+        })()}
         {f.type && (
           <div style={{
             position: "absolute", left: f.type.rect[0] * k, top: f.type.rect[1] * k,
@@ -150,12 +200,18 @@ export function ShotDemo({ spec, w = 1360 }) {
         )}
         <style>{`@keyframes shotRipple { 0% { opacity: .9; transform: scale(.4) } 100% { opacity: 0; transform: scale(1.6) } }
           @keyframes shotShimmer { from { left: -45% } to { left: 105% } }
+          @keyframes shotSpin { to { transform: rotate(360deg) } }
+          @keyframes shotFadeIn { from { opacity: 0 } }
           @property --bdxa { syntax: "<angle>"; inherits: false; initial-value: 0deg; }`}</style>
       </div>
 
       <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 14, padding: "8px 4px", direction: "rtl" }}>
         <span style={{ flex: 1, fontFamily: T.font, fontSize: 25, color: "rgba(255,255,255,.88)" }}>{f.hint}</span>
         <span style={{ fontFamily: T.fontEn, fontSize: 15, color: "rgba(255,255,255,.45)", direction: "ltr" }}>{i + 1} / {spec.frames.length}</span>
+        <button title={playing ? "Pause" : "Play"} onClick={(e) => { e.stopPropagation(); e.currentTarget.blur(); toggle(); }} style={{
+          width: 42, height: 42, borderRadius: "50%", padding: 0, display: "grid", placeItems: "center", cursor: "pointer",
+          border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.8)",
+        }}>{playing ? <Pause size={16} strokeWidth={1.75} fill="currentColor" /> : <Play size={16} strokeWidth={1.75} fill="currentColor" style={{ marginLeft: 2 }} />}</button>
         {[["חזור", back], ["התחל מחדש", restart]].map(([label, on]) => (
           <button key={label} onClick={(e) => { e.stopPropagation(); e.currentTarget.blur(); on(); }} style={{
             border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.04)", color: "rgba(255,255,255,.75)",
@@ -200,6 +256,19 @@ export const createMeeting = { frames: [
     hint: "סדר היום עדיין ריק — וכל עוד הישיבה בטיוטה, בונים אותו בחופשיות." },
   { src: M + "agenda-1-dialog.png", hold: 3400, cursor: [2027, 807],
     hint: "בניית סדר יום: משכפלים מישיבה, מתחילים מתבנית או ידנית — ושתי דרכים חדשות, עם AI." },
+  /* a look at שכפל מישיבה — the real list, summary and topics — then back out without confirming */
+  { src: M + "agenda-1-dialog.png", hold: 2400, cursor: [2190, 1318], click: true,
+    hint: "אפשר לשכפל סדר יום מישיבה קודמת." },
+  { src: M + "clone-1-list.png", hold: 3000, cursor: [1700, 700], click: true,
+    hint: "כל הישיבות הקודמות — עם חיפוש וסינון לפי תאריך." },
+  { src: M + "clone-2-confirm.png", hold: 3000, cursor: [2307, 1159], click: true,
+    hint: "סיכום לפני השכפול — ואפשר להעתיק גם את האחראים והמשתתפים." },
+  { src: M + "clone-3-topics.png", hold: 2600, cursor: [826, 1232],
+    hint: "ולהוריד נושאים שלא צריך." },
+  { src: M + "clone-3-topics.png", hold: 1800, cursor: [2418, 557], click: true,
+    hint: "אבל הפעם — לא משכפלים." },
+  { src: M + "clone-1-list.png", hold: 1300, cursor: [2418, 452], click: true,
+    hint: "אבל הפעם — לא משכפלים." },
   { src: M + "agenda-1-dialog.png", hold: 2200, cursor: [1596, 1187], click: true,
     hint: "הפעם — צור ידנית." },
   { src: M + "agenda-p-0.png", hold: 3800, cursor: [332, 424], click: true,
@@ -227,6 +296,11 @@ export const createMeeting = { frames: [
     hint: "סדר היום מוכן — מתוכנית העבודה, בכמה לחיצות וגרירות." },
 ] };
 
+/* the meetings chapter in two: creating a meeting from the list (ending on the draft's ⋮ menu),
+   then — after the old/new meeting-page comparison — inside that meeting */
+export const meetingPage = { frames: createMeeting.frames.slice(8) };
+createMeeting.frames = createMeeting.frames.slice(0, 8);
+
 export const meetingFromWorkplan = { frames: [
   { src: M + "wp-open.png", hold: 2600, cursor: [2652, 938], click: true,
     hint: "בתוכנית העבודה: בוחרים את הנושאים שצריך לדון בהם." },
@@ -246,12 +320,12 @@ export const meetingFromWorkplan = { frames: [
 export const decisionsDemo = { frames: [
   { src: "captures/new/decisions/ai-01-list.png", hold: 3000, cursor: [1805, 675], click: true,
     hint: "מעקב החלטות: כל ההחלטות מכל הוועדות, עם התקדמות המשימות של כל אחת." },
-  { src: "captures/new/decisions/ai-02-drawer.png", hold: 3800, cursor: [716, 778], click: true,
+  { src: "captures/new/decisions/ai-02-drawer.png", hold: 4400, cursor: [716, 862], click: true,
     hint: "כל החלטה — עם הישיבה, הנושא והוועדה. וחדש: הצעת משימות עם AI." },
-  { src: "captures/new/decisions/ai-03-think.png", hold: 2600, cursor: [716, 778], shimmer: [64, 832, 1272, 230],
+  { src: "captures/new/decisions/ai-03-think.png", hold: 2600, cursor: [716, 862], shimmer: [64, 916, 1272, 230],
     hint: "מאתר פעולות, אחראים ותאריכים בהחלטה…" },
-  { src: "captures/new/decisions/ai-04-suggest.png", hold: 5200, cursor: [224, 1318], click: true, reveal: { rect: [64, 832, 1272, 550], dur: 1700 },
-    hint: "לכל משימה נקבעים אחראי ותאריך יעד שניתן לשנות." },
+  { src: "captures/new/decisions/ai-04-suggest.png", hold: 5800, cursor: [225, 1523], click: true, reveal: { rect: [64, 916, 1272, 595], dur: 1900 },
+    hint: "מכל סעיף בהחלטה — משימה, עם אחראי ותאריך היעד שנקבע בה." },
   { src: "captures/new/decisions/ai-05-done.png", hold: 4400, cursor: [1000, 1500],
     hint: "המשימות נוצרות ומקושרות להחלטה, לנושא ולישיבה." },
 ] };
@@ -280,19 +354,54 @@ export const tasksDemo = { frames: [
     hint: "…ותיאור, כמו שהוא נכתב בפועל." },
   { src: "captures/new/tasks/t11-create-ai.png", hold: 2600, cursor: [764, 951], click: true,
     hint: "וחדש: שכתוב עם AI, ישר מתוך העורך." },
-  { src: "captures/new/tasks/t12-ai-menu.png", hold: 5000, cursor: [842, 1032], reveal: { rect: [656, 992, 373, 378], dur: 900 },
-    hint: "שפר ניסוח, קצר, נסח באופן רשמי יותר, המר לנקודות, תרגם לעברית." },
+  { src: "captures/new/tasks/t12-ai-menu.png", hold: 4600, cursor: [842, 1032], reveal: { rect: [656, 992, 373, 307], dur: 900 },
+    hint: "שפר ניסוח, קצר, נסח באופן רשמי יותר, המר לנקודות." },
+  /* the rest of the real drawer: priority, tags, a viewer; sub-tasks, each with its own owner; and the
+     real connections dialog — committee → meeting → topic → the decision the task came from */
+  { src: "captures/new/tasks/t14-details.png", hold: 2800, cursor: [917, 780],
+    hint: "משלימים את הפרטים: עדיפות וצופים — מי שצריך להתעדכן בכל שינוי." },
+  { src: "captures/new/tasks/t15-sub-typing.png", hold: 3000, cursor: [360, 1660],
+    type: { rect: [146, 1585, 1054, 1621], text: "הכנת המלצה לוועדה לקראת הישיבה הבאה", speed: 55 },
+    hint: "תתי-משימות: מפרקים את העבודה לשלבים…" },
+  { src: "captures/new/tasks/t16-sub-assignee.png", hold: 2600, cursor: [252, 1455], click: true, reveal: { rect: [82, 1173, 381, 400], dur: 400 },
+    hint: "…ולכל שלב — אחראי משלו." },
+  { src: "captures/new/tasks/t17-subtasks.png", hold: 3600, cursor: [583, 1880], click: true,
+    reveal: { rect: [60, 1440, 1060, 245], dur: 1100, cover: "#fff" },
+    hint: "שלוש תתי-משימות, שלושה אחראים." },
+  { src: "captures/new/tasks/t18-conn-pick.png", hold: 3000, cursor: [624, 1358], click: true,
+    hint: "קישורים: לוועדה, לישיבה, לנושא — ולהחלטה." },
+  { src: "captures/new/tasks/t19-conn-filled.png", hold: 5600, cursor: [243, 1361], click: true,
+    hint: "המשימה יודעת מאיזו החלטה היא נולדה — וכל מי שפותח אותה רואה את ההקשר." },
+  { src: "captures/new/tasks/t20-conn-done.png", hold: 4400, cursor: [260, 1700],
+    hint: "והקישור נשמר על המשימה." },
 ] };
 
+/* The drive's own sidebar opens (the real toggle), its folder tree unfolds, the board folder, a file's
+   actions and details, then "התיקייה האישית שלי" from the sidebar. The drive's data is the demo mock
+   (drive-mock2): every /api/Resources call was answered before it reached the server. */
 export const driveDemo = { frames: [
-  { src: "captures/new/drive/01-root.png", hold: 3200, cursor: [2270, 610], click: true,
-    hint: "BD Drive: כל מסמכי הארגון במקום אחד, בתיקייה לכל ועדה" },
-  { src: "captures/new/drive/02-folder.png", hold: 3000, cursor: [1930, 610], click: true,
-    hint: "בתיקיית הדירקטוריון יש תיקייה לכל ישיבה, ודוחות, תקציבים ופרוטוקולים" },
-  { src: "captures/new/drive/03-selected.png", hold: 2800, cursor: [768, 1848], click: true,
-    hint: "בוחרים קובץ ומקבלים את כל הפעולות: הורדה, העברה, תגיות, גישה ופרטים" },
-  { src: "captures/new/drive/04-details.png", hold: 4400, cursor: [640, 526],
-    hint: "בחלונית הפרטים רואים מי פתח, מי שינה, מי יצר ולמי יש גישה" },
+  { src: "captures/new/drive/s01-root.png", hold: 3000, cursor: [2550, 1080], click: true,
+    hint: "BD Drive: כל מסמכי הארגון במקום אחד, בתיקייה לכל ועדה." },
+  { src: "captures/new/drive/s02-open.png", hold: 2800, cursor: [2124, 312], click: true,
+    reveal: { rect: [2050, 190, 660, 1780], dur: 700, dir: "rtl", cover: "#fff" },
+    hint: "בצד — הניווט: כל המסמכים, התיקייה האישית והארכיון." },
+  { src: "captures/new/drive/s03-tree.png", hold: 2800, cursor: [2400, 429], click: true,
+    reveal: { rect: [2060, 360, 640, 1160], dur: 900, cover: "#fff" },
+    hint: "וכל המבנה בעץ אחד — תיקייה לכל ועדה." },
+  { src: "captures/new/drive/s04-folder.png", hold: 3000, cursor: [1576, 530], click: true,
+    reveal: { rect: [30, 440, 2000, 1500], dur: 800, cover: "#fff" },
+    hint: "בתיקיית הדירקטוריון: תיקייה לכל ישיבה, ודוחות, תקציבים ופרוטוקולים." },
+  { src: "captures/new/drive/s05-selected.png", hold: 2800, cursor: [284, 1843], click: true,
+    reveal: { rect: [40, 1770, 1960, 150], dur: 500, dir: "up" },
+    hint: "בוחרים קובץ ומקבלים את כל הפעולות: הורדה, העברה, תגיות, גישה ופרטים." },
+  { src: "captures/new/drive/s06-details.png", hold: 3600, cursor: [600, 1860],
+    reveal: { rect: [40, 450, 830, 1510], dur: 600, dir: "ltr", cover: "#fff" },
+    hint: "בחלונית הפרטים רואים מי פתח, מי שינה, מי יצר ולמי יש גישה." },
+  { src: "captures/new/drive/s06-details.png", hold: 1700, cursor: [2400, 1092], click: true,
+    hint: "ובצד — התיקייה האישית שלי." },
+  { src: "captures/new/drive/s07-personal.png", hold: 4800, cursor: [1100, 640],
+    reveal: { rect: [30, 440, 2000, 1500], dur: 800, cover: "#fff" },
+    hint: "הערות, טיוטות וספר ישיבה עם הסימונים שלי — רק אני רואה אותם." },
 ] };
 
 /* ── the meeting book, and asking it ───────────────────────────
@@ -323,49 +432,119 @@ export const bookDemo = { frames: [
 export const minutesDemo = { frames: [
   { src: "captures/new/minutes/m01-empty.png", hold: 2800, cursor: [1054, 1432], click: true,
     hint: "לשונית הפרוטוקול — עדיין ריקה." },
+  /* first the familiar way: upload a file → the viewer → the full editor, with tracked changes.
+     Real screens and the real OnlyOffice editor; the document on them is ours, laid over the
+     frame (the file it opened is someone else's), and nothing was typed into the editor. */
+  { src: "captures/new/minutes/m02-dialog.png", hold: 3000, cursor: [2187, 1345], click: true,
+    hint: "נתחיל מהמוכר: מעלים קובץ קיים." },
+  { src: "captures/new/minutes/u01-viewer.png", hold: 3000, cursor: [171, 408], click: true,
+    hint: "הקובץ עלה — והפרוטוקול פתוח לצפייה, בתוך הישיבה." },
+  { src: "captures/new/minutes/u02-editor.png", hold: 3000, cursor: [1232, 1260], click: true,
+    hint: "עורך מלא, כמו Word — בתוך Boardirector." },
+  { src: "captures/new/minutes/u03-insert.png", hold: 3000, cursor: [1232, 1260],
+    reveal: { rect: [840, 1236, 392, 40], dur: 1600, dir: "rtl" },
+    hint: "כל שינוי נרשם — במעקב שינויים." },
+  { src: "captures/new/minutes/u04-strike.png", hold: 2200, cursor: [1338, 1512],
+    reveal: { rect: [1028, 1490, 310, 38], dur: 900, dir: "rtl" },
+    hint: "מחיקות ותוספות — הכול מסומן." },
+  { src: "captures/new/minutes/u05-replace.png", hold: 2800, cursor: [1046, 1514],
+    reveal: { rect: [1520, 1536, 450, 40], dur: 1700, dir: "rtl" },
+    hint: "מחיקות ותוספות — הכול מסומן." },
+  { src: "captures/new/minutes/u06-balloon.png", hold: 4200, cursor: [1030, 1258],
+    reveal: { rect: [632, 1285, 606, 175], dur: 450 },
+    hint: "רואים מי שינה, מה ומתי — ומאשרים או דוחים." },
   { src: "captures/new/minutes/m02-dialog.png", hold: 3200, cursor: [901, 813], click: true,
-    hint: "לצד שלוש הדרכים המוכרות — חדש: צור עם AI." },
+    hint: "ועכשיו — הדרך החדשה: צור עם AI." },
   { src: "captures/new/minutes/m03-upload.png", hold: 2600, cursor: [1600, 1174], click: true,
     hint: "שלב 1: מעלים את מה שיש — פרוטוקול, סיכומים או הקלטה." },
-  { src: "captures/new/minutes/m04-uploading.png", hold: 1900, cursor: [1600, 1500],
-    reveal: { rect: [1365, 1195, 1029, 12], dur: 1300, dir: "rtl", cover: "#EBEEF2" },
+  { src: "captures/new/minutes/m04-uploading.png", hold: 2500, cursor: [1600, 1500],
+    progress: { rect: [734, 1196, 1660, 12], dur: 1900, color: "rgb(114,43,203)", track: "rgb(235,238,242)" }, spin: [817, 1144, 30, 30],
     hint: "מעלה את הקובץ…" },
   { src: "captures/new/minutes/m05-uploaded.png", hold: 3400, cursor: [835, 1480], click: true,
     hint: "הקובץ זוהה כפרוטוקול סופי — והנוסח המקורי נשמר." },
-  { src: "captures/new/minutes/m06-extract.png", hold: 3800, cursor: [1300, 1300],
-    reveal: [{ rect: [500, 640, 1496, 848], dur: 1700, cover: "#fff" }, { rect: [2258, 1476, 442, 12], dur: 1700, dir: "rtl", cover: "#EBEEF2" }],
-    shimmer: [560, 1130, 1440, 340],
-    hint: "שלב 2: ה-AI מחלץ נושאים, החלטות ומשימות. שום דבר עוד לא נשמר." },
   { src: "captures/new/minutes/m07-approve.png", hold: 5600, cursor: [621, 1654], click: true,
     reveal: { rect: [500, 538, 1504, 1036], dur: 1800, cover: "#fff" },
-    hint: "שלב 3: מאשרים כל דיון, החלטה ומשימה — הכול ניתן לעריכה." },
+    hint: "ה-AI חילץ נושאים, החלטות ומשימות — ומאשרים כל אחד. הכול ניתן לעריכה." },
   { src: "captures/new/minutes/m08-create.png", hold: 2400, cursor: [1000, 1300], shimmer: [94, 472, 1920, 92],
     hint: "בונה את הפרוטוקול…" },
-  { src: "captures/new/minutes/06-document.png", hold: 5000, cursor: [1500, 1150],
-    hint: "והפרוטוקול מוכן — כמסמך, לעריכה ולהפצה." },
+  /* the result: regular manual minutes (the real list, its rows from the AI's topics) — topics nobody
+     approved are marked as AI drafts; then topic 1 opens on its discussion, decisions and task */
+  { src: "captures/new/minutes/m09-done.png", hold: 5200, cursor: [1942, 753], click: true,
+    reveal: { rect: [60, 470, 1990, 1060], dur: 1400, cover: "#fff" },
+    hint: "והפרוטוקול מוכן — נושא אחרי נושא. מה שלא אישרתם מסומן כטיוטת AI." },
+  { src: "captures/new/minutes/m10-topic.png", hold: 4200, cursor: [1500, 1240],
+    hint: "בכל נושא: הדיון וההחלטות — פרוטוקול רגיל, שאפשר לערוך ידנית." },
+  { src: "captures/new/minutes/m11-task.png", hold: 4600, cursor: [1379, 1654],
+    hint: "והמשימות כבר משויכות — עם אחראי ותאריך יעד." },
+] };
+
+/* ── the minutes, out for comments and approval ──────────────────
+   The real stages popover, send-for-comments dialog, comments tracking, final-approval dialog and
+   approvals tracking, on the same meeting after it took place. The sends were answered before they
+   reached the server; the two tracking lists are the meeting's attendees with demo statuses. */
+export const minutesSendDemo = { frames: [
+  { src: "captures/new/minutes/n01-list.png", hold: 2600, cursor: [460, 260], click: true,
+    hint: "הפרוטוקול מוכן? מכאן הוא יוצא לדירקטורים." },
+  { src: "captures/new/minutes/n02-stages.png", hold: 2800, cursor: [874, 739], click: true,
+    hint: "טיוטה, אישור סופי, סגור — ובשלב הראשון: להערות." },
+  { src: "captures/new/minutes/n03-send-comments.png", hold: 3000, cursor: [1150, 1420], click: true,
+    hint: "תאריך יעד, ולמי לשלוח — לכל המשתתפים או לפי נושא." },
+  { src: "captures/new/minutes/n04-comments-tracking.png", hold: 3800, cursor: [1650, 1120],
+    hint: "ורואים מי כבר עבר על הפרוטוקול — ומי עוד לא." },
+  { src: "captures/new/minutes/n05-stages2.png", hold: 2600, cursor: [570, 771], click: true,
+    hint: "ההערות טופלו? מסמנים לאישור סופי." },
+  { src: "captures/new/minutes/n06-final.png", hold: 3000, cursor: [1144, 1415], click: true,
+    hint: "שולחים לאישור — לכל המשתתפים בלחיצה אחת." },
+  { src: "captures/new/minutes/n07-approvals.png", hold: 4800, cursor: [1700, 1150],
+    hint: "ומעקב אישורים: מי אישר, מי עוד ממתין." },
+] };
+
+/* ── global search ───────────────────────────────────────────────
+   The real app-wide search (the sidebar's חיפוש), opened over the meeting's minutes. The query was answered
+   locally with demo results from the deck's own story — the hedging decision, its tasks, the minutes file. */
+const SR = "captures/new/search/";
+export const searchDemo = { frames: [
+  { src: SR + "01-page.png", hold: 2600, cursor: [2986, 234], click: true,
+    hint: "מכל מקום במערכת — חיפוש אחד." },
+  { src: SR + "02-open.png", hold: 2200, cursor: [2620, 420],
+    hint: "משימות, קבצים, ישיבות, נושאים וועדות — בתיבה אחת." },
+  { src: SR + "03-results.png", hold: 4400, cursor: [2039, 1555], click: true,
+    reveal: [{ rect: [2560, 395, 180, 50], dir: "rtl", dur: 600 }, { rect: [330, 600, 1990, 1105], dur: 1100, delay: 900, cover: "#fff" }],
+    hint: "מקלידים ״גידור״ — ומקבלים הכול, מקובץ לפי סוג." },
+  { src: SR + "04-matches.png", hold: 3400, cursor: [1700, 1640],
+    reveal: { rect: [368, 1575, 1904, 130], dur: 500 },
+    hint: "וגם בתוך המסמכים — כל מקום בקובץ שבו המילה מופיעה." },
+  { src: SR + "05-scrolled.png", hold: 4000, cursor: [1880, 1395],
+    scroll: { rect: [368, 661, 1904, 1044], d: 680, dur: 1000 },
+    hint: "והישיבה והנושאים שבהם זה נדון — במקום אחד." },
 ] };
 
 /* ── the work plan ──────────────────────────────────────────────
    The real /workplan page over a clean demo dataset (52 topics, 8 committees) that the counters,
    the chart and the rows all agree on. Committees open and close, the chart switches and filters. */
-const WP_ROWS = [48, 704, 2644, 1248], WP_BARS = [90, 652, 2560, 292];
+/* motion matches the page: opening a committee pushes the rows under it down (closing pulls them back up),
+   הצג פירוט pushes the list down by the chart's height, and the bars rise from the axis whenever the data changes */
+const WP = "captures/new/workplan/", WP_BARS = [90, 760, 2560, 186];
 export const workplanDemo = { frames: [
-  { src: "captures/new/workplan/01-collapsed.png", hold: 3400, cursor: [2612, 756], click: true,
+  { src: WP + "01-collapsed.png", hold: 3400, cursor: [2612, 756], click: true,
     hint: "תוכנית העבודה של 2026: כל הנושאים לפי ועדה — מה באיחור, מה מתקרב ומה כבר נדון." },
-  { src: "captures/new/workplan/02-fin-open.png", hold: 3600, cursor: [2612, 756], click: true, reveal: { rect: WP_ROWS, dur: 1300 },
+  { src: WP + "02-fin-open.png", hold: 3800, cursor: [2612, 756], click: true, push: { y: 808, h: 1240, dur: 1100 },
     hint: "פותחים ועדה — וכל הנושאים שלה, עם סטטוס ותאריך נדרש לדיון." },
-  { src: "captures/new/workplan/01-collapsed.png", hold: 1500, cursor: [2612, 964], click: true, reveal: { rect: WP_ROWS, dur: 900, dir: "up" },
+  { src: WP + "03-collapsed.png", hold: 1700, cursor: [2612, 964], click: true, push: { y: 808, h: 1240, dur: 800, dir: "up" },
     hint: "ועוברים לוועדה הבאה." },
-  { src: "captures/new/workplan/04-audit-open.png", hold: 3600, cursor: [173, 504], click: true, reveal: { rect: WP_ROWS, dur: 1300 },
+  { src: WP + "04-audit-open.png", hold: 3800, cursor: [173, 504], click: true, push: { y: 1016, h: 1100, dur: 1050 },
     hint: "ועדת ביקורת: מה באיחור, מה מתקרב ליעד ומה ממתין לשיבוץ." },
-  { src: "captures/new/workplan/05-breakdown.png", hold: 3800, cursor: [117, 636], click: true, reveal: { rect: [42, 494, 2656, 1458], dur: 1400 },
+  { src: WP + "05-breakdown.png", hold: 4200, cursor: [117, 636], click: true, push: { y: 558, h: 426, dur: 900 },
+    reveal: { rect: WP_BARS, dur: 1000, delay: 1250, dir: "up", cover: "#fff" },
     hint: "הצג פירוט: הדיונים לאורך השנה, לפי חודשים." },
-  { src: "captures/new/workplan/06-quarters.png", hold: 3200, cursor: [286, 326], click: true, reveal: { rect: WP_BARS, dur: 1100, dir: "up" },
+  { src: WP + "06-quarters.png", hold: 3400, cursor: [286, 326], click: true,
+    reveal: { rect: WP_BARS, dur: 1000, delay: 380, dir: "up", cover: "#fff", fade: true },
     hint: "ולפי רבעונים." },
-  { src: "captures/new/workplan/07-filter-open.png", hold: 2200, cursor: [254, 631], click: true, reveal: { rect: [0, 372, 548, 592], dur: 500 },
+  { src: WP + "07-filter-open.png", hold: 2300, cursor: [254, 631], click: true, reveal: { rect: [0, 372, 548, 592], dur: 450 },
     hint: "מסננים לוועדה אחת…" },
-  { src: "captures/new/workplan/08-filtered.png", hold: 4400, cursor: [1300, 1500], reveal: { rect: WP_BARS, dur: 1200, dir: "up" },
-    hint: "…והמספרים והגרף מתעדכנים לוועדה הזו בלבד." },
+  { src: WP + "08-filtered.png", hold: 4600, cursor: [1400, 640], push: { y: 1234, h: 720, dur: 900 },
+    reveal: { rect: WP_BARS, dur: 1000, delay: 420, dir: "up", cover: "#fff", fade: true },
+    hint: "…והמספרים, הגרף והרשימה — לוועדה הזו בלבד." },
 ] };
 
 /* ── what's next: voting, compensation, smart AI reminders ──────
@@ -407,4 +586,25 @@ export const remindDemo = { frames: [
     hint: "תזכורת מוכנה, מנוסחת לפי הישיבה — ונשלחת רק באישור." },
   { src: "captures/new/next/13-ntf-sent.png", hold: 3600, cursor: [1600, 1300],
     hint: "נשלח." },
+] };
+
+/* ── the dashboard, customised ─────────────────────────────────
+   The real product's own layout editor ("ערוך פריסה"): the drag, the swap preview, the split, removing
+   a widget to the library and "סיום" are all the app's; the save was blocked, nothing changed. */
+export const dashDemo = { frames: [
+  { src: "captures/new/dashboard/d01-view.png", hold: 2600, cursor: [70, 196], click: true,
+    hint: "כל אחד רואה את מה שחשוב לו. לוחצים על ערוך פריסה." },
+  { src: "captures/new/dashboard/d02-edit.png", hold: 2400, cursor: [2793, 1329], click: true,
+    hint: "מצב עריכה. כל שורה אפשר לגרור, וכל רכיב אפשר להסתיר." },
+  { src: "captures/new/dashboard/d03-drag.png", hold: 1900, cursor: [2793, 577],
+    drag: { from: "captures/new/dashboard/d02-edit.png", rect: [48, 1297, 2777, 660], to: [48, 545], tilt: 0 },
+    hint: "הוועדות חשובות לי יותר — גוררים אותן למעלה." },
+  { src: "captures/new/dashboard/d04-dropped.png", hold: 2400, cursor: [2239, 302],
+    hint: "הוועדות מתחת למספרים, והמשימות והישיבות ירדו שורה." },
+  { src: "captures/new/dashboard/d05-hide.png", hold: 2000, cursor: [2239, 302], click: true,
+    hint: "את המספרים אני לא צריך כל יום — מסירים אותם מהפריסה." },
+  { src: "captures/new/dashboard/d06-reflow.png", hold: 3200, cursor: [99, 196], click: true, reveal: { rect: [40, 1815, 2790, 150], dur: 600, dir: "up" },
+    hint: "לא נמחק — מחכה בספריית הרכיבים, וגוררים אותו חזרה מתי שרוצים." },
+  { src: "captures/new/dashboard/d07-done.png", hold: 4200, cursor: [1600, 1700],
+    hint: "סיום. הדשבורד שלי." },
 ] };
